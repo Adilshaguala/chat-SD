@@ -1,0 +1,375 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Profile } from "@/lib/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Search, Users, User, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+interface NewChatDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  currentUser: Profile;
+  onConversationCreated: (conversationId: string) => void;
+}
+
+export function NewChatDialog({
+  open,
+  onOpenChange,
+  currentUser,
+  onConversationCreated,
+}: NewChatDialogProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [users, setUsers] = useState<Profile[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [groupName, setGroupName] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [activeTab, setActiveTab] = useState("private");
+
+  // Search users by name or email
+  useEffect(() => {
+    const searchUsers = async () => {
+      if (!searchQuery.trim()) {
+        setUsers([]);
+        return;
+      }
+
+      setIsLoading(true);
+      const supabase = createClient();
+
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .neq("id", currentUser.id)
+        .or(`name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
+        .limit(20);
+
+      setUsers(data || []);
+      setIsLoading(false);
+    };
+
+    const debounce = setTimeout(searchUsers, 300);
+    return () => clearTimeout(debounce);
+  }, [searchQuery, currentUser.id]);
+
+  const handleUserSelect = (userId: string) => {
+    if (activeTab === "private") {
+      // For private chat, create immediately
+      createPrivateChat(userId);
+    } else {
+      // For group, toggle selection
+      setSelectedUsers((prev) =>
+        prev.includes(userId)
+          ? prev.filter((id) => id !== userId)
+          : [...prev, userId]
+      );
+    }
+  };
+
+  const createPrivateChat = async (otherUserId: string) => {
+    setIsCreating(true);
+    const supabase = createClient();
+
+    try {
+      // Check if conversation already exists
+      const { data: existingParticipations } = await supabase
+        .from("conversation_participants")
+        .select("conversation_id")
+        .eq("user_id", currentUser.id);
+
+      if (existingParticipations) {
+        for (const participation of existingParticipations) {
+          const { data: otherParticipation } = await supabase
+            .from("conversation_participants")
+            .select("conversation_id")
+            .eq("conversation_id", participation.conversation_id)
+            .eq("user_id", otherUserId)
+            .single();
+
+          if (otherParticipation) {
+            // Check if it's a private conversation
+            const { data: conv } = await supabase
+              .from("conversations")
+              .select("type")
+              .eq("id", participation.conversation_id)
+              .single();
+
+            if (conv?.type === "private") {
+              onConversationCreated(participation.conversation_id);
+              resetDialog();
+              return;
+            }
+          }
+        }
+      }
+
+      // Create new private conversation
+      const { data: conversation, error: convError } = await supabase
+        .from("conversations")
+        .insert({
+          type: "private",
+          created_by: currentUser.id,
+        })
+        .select()
+        .single();
+
+      if (convError || !conversation) {
+        throw new Error("Erro ao criar conversa");
+      }
+
+      // Add participants
+      const { error: partError } = await supabase
+        .from("conversation_participants")
+        .insert([
+          {
+            conversation_id: conversation.id,
+            user_id: currentUser.id,
+            role: "admin",
+          },
+          {
+            conversation_id: conversation.id,
+            user_id: otherUserId,
+            role: "member",
+          },
+        ]);
+
+      if (partError) {
+        throw new Error("Erro ao adicionar participantes");
+      }
+
+      onConversationCreated(conversation.id);
+      resetDialog();
+    } catch (error) {
+      toast.error("Erro ao criar conversa");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const createGroupChat = async () => {
+    if (selectedUsers.length < 2) {
+      toast.error("Selecione pelo menos 2 participantes");
+      return;
+    }
+
+    if (!groupName.trim()) {
+      toast.error("Digite um nome para o grupo");
+      return;
+    }
+
+    setIsCreating(true);
+    const supabase = createClient();
+
+    try {
+      // Create group conversation
+      const { data: conversation, error: convError } = await supabase
+        .from("conversations")
+        .insert({
+          type: "group",
+          name: groupName,
+          created_by: currentUser.id,
+        })
+        .select()
+        .single();
+
+      if (convError || !conversation) {
+        throw new Error("Erro ao criar grupo");
+      }
+
+      // Add all participants including current user
+      const participants = [
+        {
+          conversation_id: conversation.id,
+          user_id: currentUser.id,
+          role: "admin" as const,
+        },
+        ...selectedUsers.map((userId) => ({
+          conversation_id: conversation.id,
+          user_id: userId,
+          role: "member" as const,
+        })),
+      ];
+
+      const { error: partError } = await supabase
+        .from("conversation_participants")
+        .insert(participants);
+
+      if (partError) {
+        throw new Error("Erro ao adicionar participantes");
+      }
+
+      onConversationCreated(conversation.id);
+      resetDialog();
+    } catch (error) {
+      toast.error("Erro ao criar grupo");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const resetDialog = () => {
+    setSearchQuery("");
+    setUsers([]);
+    setSelectedUsers([]);
+    setGroupName("");
+    setActiveTab("private");
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Nova conversa</DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="private" className="gap-2">
+              <User className="h-4 w-4" />
+              Privado
+            </TabsTrigger>
+            <TabsTrigger value="group" className="gap-2">
+              <Users className="h-4 w-4" />
+              Grupo
+            </TabsTrigger>
+          </TabsList>
+
+          <div className="mt-4 space-y-4">
+            {/* Group name input (only for group tab) */}
+            {activeTab === "group" && (
+              <Input
+                placeholder="Nome do grupo"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+              />
+            )}
+
+            {/* Search input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Pesquisar por nome ou email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+
+            {/* Selected users (for group) */}
+            {activeTab === "group" && selectedUsers.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedUsers.map((userId) => {
+                  const user = users.find((u) => u.id === userId);
+                  if (!user) return null;
+                  return (
+                    <div
+                      key={userId}
+                      className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-full text-sm"
+                    >
+                      <span>{user.name}</span>
+                      <button
+                        onClick={() =>
+                          setSelectedUsers((prev) =>
+                            prev.filter((id) => id !== userId)
+                          )
+                        }
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* User list */}
+            <ScrollArea className="h-[300px]">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : users.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  {searchQuery
+                    ? "Nenhum usuário encontrado"
+                    : "Digite para pesquisar usuários"}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {users.map((user) => (
+                    <button
+                      key={user.id}
+                      onClick={() => handleUserSelect(user.id)}
+                      disabled={isCreating}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
+                    >
+                      {activeTab === "group" && (
+                        <Checkbox
+                          checked={selectedUsers.includes(user.id)}
+                          onCheckedChange={() => handleUserSelect(user.id)}
+                        />
+                      )}
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={user.avatar_url || undefined} />
+                        <AvatarFallback className="bg-primary/20 text-primary">
+                          {user.name.slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{user.name}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {user.email}
+                        </p>
+                      </div>
+                      {user.is_online && (
+                        <span className="h-2 w-2 rounded-full bg-online" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+
+            {/* Create group button */}
+            {activeTab === "group" && (
+              <Button
+                onClick={createGroupChat}
+                disabled={
+                  selectedUsers.length < 2 || !groupName.trim() || isCreating
+                }
+                className="w-full"
+              >
+                {isCreating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Criando...
+                  </>
+                ) : (
+                  <>
+                    <Users className="h-4 w-4 mr-2" />
+                    Criar grupo ({selectedUsers.length} selecionados)
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -1,5 +1,16 @@
-import { Demo } from "@/components/demo"
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 
-export default function Page() {
-  return <Demo />
+export default async function HomePage() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    redirect("/chat");
+  } else {
+    redirect("/auth/login");
+  }
 }
