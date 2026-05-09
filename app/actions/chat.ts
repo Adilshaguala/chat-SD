@@ -12,35 +12,6 @@ export async function createPrivateConversation(otherUserId: string) {
   if (!user) throw new Error("Não autenticado");
 
   try {
-    // Check if conversation already exists
-    const { data: currentUserConversations } = await supabase
-      .from("conversation_participants")
-      .select("conversation_id")
-      .eq("user_id", user.id);
-
-    if (currentUserConversations) {
-      for (const { conversation_id } of currentUserConversations) {
-        const { data: otherUserParticipation } = await supabase
-          .from("conversation_participants")
-          .select("conversation_id")
-          .eq("conversation_id", conversation_id)
-          .eq("user_id", otherUserId)
-          .single();
-
-        if (otherUserParticipation) {
-          const { data: conversation } = await supabase
-            .from("conversations")
-            .select("type")
-            .eq("id", conversation_id)
-            .single();
-
-          if (conversation?.type === "private") {
-            return { conversationId: conversation_id };
-          }
-        }
-      }
-    }
-
     // Create new private conversation
     const { data: conversation, error: convError } = await supabase
       .from("conversations")

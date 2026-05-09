@@ -8,10 +8,9 @@ import { Profile } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FieldGroup, Field, FieldLabel, FieldError } from "@/components/ui/field";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
-import { ArrowLeft, Upload, User, Mail, LogOut } from "lucide-react";
+import { ArrowLeft, Upload, LogOut } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ProfilePage() {
@@ -23,32 +22,44 @@ export default function ProfilePage() {
   const [name, setName] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [errors, setErrors] = useState<{ name?: string }>({});
+  const [nameError, setNameError] = useState("");
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (!user) {
-        router.push("/auth/login");
-        return;
+        if (!user) {
+          router.push("/auth/login");
+          return;
+        }
+
+        const { data: profileData, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+        if (error) {
+          console.error("[v0] Error fetching profile:", error);
+          toast.error("Erro ao carregar perfil");
+          return;
+        }
+
+        if (profileData) {
+          setProfile(profileData);
+          setName(profileData.name);
+          setAvatarPreview(profileData.avatar_url);
+        }
+      } catch (error) {
+        console.error("[v0] Error in fetchProfile:", error);
+        toast.error("Erro ao carregar perfil");
+      } finally {
+        setIsLoading(false);
       }
-
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-
-      if (profileData) {
-        setProfile(profileData);
-        setName(profileData.name);
-        setAvatarPreview(profileData.avatar_url);
-      }
-      setIsLoading(false);
     };
 
     fetchProfile();
@@ -76,24 +87,24 @@ export default function ProfilePage() {
     }
   };
 
-  const validate = () => {
-    const newErrors: typeof errors = {};
-
-    if (!name.trim()) {
-      newErrors.name = "Nome é obrigatório";
-    } else if (name.length < 2) {
-      newErrors.name = "Nome deve ter pelo menos 2 caracteres";
+  const validateForm = () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setNameError("Nome é obrigatório");
+      return false;
     }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (trimmedName.length < 2) {
+      setNameError("Nome deve ter pelo menos 2 caracteres");
+      return false;
+    }
+    setNameError("");
+    return true;
   };
 
   const handleSave = async () => {
-    if (!validate() || !profile) return;
+    if (!validateForm() || !profile) return;
 
     setIsSaving(true);
-
     try {
       let avatarUrl = profile.avatar_url;
 
@@ -101,8 +112,8 @@ export default function ProfilePage() {
       if (avatarFile) {
         const formData = new FormData();
         formData.append("file", avatarFile);
-        const { url } = await uploadAvatar(formData);
-        avatarUrl = url;
+        const result = await uploadAvatar(formData);
+        avatarUrl = result.url;
       }
 
       // Update profile
@@ -133,157 +144,221 @@ export default function ProfilePage() {
       const supabase = createClient();
       await supabase.auth.signOut();
       router.push("/auth/login");
+      toast.success("Desconectado com sucesso!");
     } catch (error) {
-      toast.error("Erro ao fazer logout");
+      console.error("[v0] Error signing out:", error);
+      toast.error("Erro ao desconectar");
+    } finally {
       setIsLoggingOut(false);
     }
   };
 
+  const handleCancel = () => {
+    if (profile) {
+      setName(profile.name);
+      setAvatarFile(null);
+      setAvatarPreview(profile.avatar_url);
+      setNameError("");
+    }
+    router.back();
+  };
+
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex items-center justify-center min-h-screen">
         <Spinner />
       </div>
     );
   }
 
   if (!profile) {
-    return null;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Erro</CardTitle>
+            <CardDescription>Não foi possível carregar seu perfil</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push("/chat")} className="w-full">
+              Voltar ao Chat
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-2xl mx-auto space-y-6">
+    <div className="min-h-screen bg-background py-8">
+      <div className="max-w-2xl mx-auto px-4">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.back()}
-            className="rounded-full"
-          >
-            <ArrowLeft className="h-5 w-5" />
-            <span className="sr-only">Voltar</span>
-          </Button>
-          <h1 className="text-3xl font-bold">Meu Perfil</h1>
-        </div>
-
-        {/* Profile Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Informações Pessoais</CardTitle>
-            <CardDescription>Atualize suas informações de perfil</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Avatar */}
-            <div className="flex flex-col items-center gap-4">
-              <Avatar className="h-24 w-24">
-                <AvatarImage src={avatarPreview || undefined} />
-                <AvatarFallback className="bg-primary/20 text-primary text-2xl">
-                  {name.slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <label className="flex items-center gap-2">
-                <Button variant="outline" size="sm" asChild>
-                  <span>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Alterar foto
-                  </span>
-                </Button>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarChange}
-                  className="hidden"
-                />
-              </label>
-              <p className="text-xs text-muted-foreground">
-                Máximo 5MB. Formatos: JPG, PNG, GIF
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleCancel}
+              className="rounded-full"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold">Perfil</h1>
+              <p className="text-sm text-muted-foreground">
+                Gerencie suas informações pessoais
               </p>
             </div>
+          </div>
+        </div>
 
-            {/* Form Fields */}
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="name">Nome</FieldLabel>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="name"
-                    type="text"
-                    placeholder="Seu nome"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="pl-9"
-                    disabled={isSaving}
-                  />
-                </div>
-                {errors.name && <FieldError>{errors.name}</FieldError>}
-              </Field>
+        <div className="space-y-6">
+          {/* Avatar Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Foto de Perfil</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center gap-4">
+              <Avatar className="h-24 w-24">
+                <AvatarImage src={avatarPreview || undefined} />
+                <AvatarFallback className="bg-primary/20 text-lg font-semibold">
+                  {profile.name.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
 
-              <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={profile.email}
-                    className="pl-9"
-                    disabled
+              <div className="w-full">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    className="hidden"
                   />
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Email não pode ser alterado
+                  <Button variant="outline" className="w-full" asChild>
+                    <span className="flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      Alterar Foto
+                    </span>
+                  </Button>
+                </label>
+              </div>
+
+              {avatarFile && (
+                <p className="text-sm text-muted-foreground">
+                  {avatarFile.name}
                 </p>
-              </Field>
-            </FieldGroup>
+              )}
+            </CardContent>
+          </Card>
 
-            {/* Save Button */}
+          {/* Profile Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Informações Pessoais</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Name Field */}
+              <div className="space-y-2">
+                <label htmlFor="name" className="text-sm font-medium">
+                  Nome
+                </label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (nameError) setNameError("");
+                  }}
+                  placeholder="Digite seu nome"
+                  disabled={isSaving}
+                  className={nameError ? "border-red-500" : ""}
+                />
+                {nameError && (
+                  <p className="text-sm text-red-500">{nameError}</p>
+                )}
+              </div>
+
+              {/* Email Field (Read-only) */}
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-medium">
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  value={profile.email}
+                  disabled
+                  className="bg-muted"
+                />
+              </div>
+
+              {/* Joined Date */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  Membro desde
+                </label>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(profile.created_at).toLocaleDateString("pt-BR")}
+                </p>
+              </div>
+
+              {/* Online Status */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Status</label>
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`h-3 w-3 rounded-full ${
+                      profile.is_online ? "bg-green-500" : "bg-gray-400"
+                    }`}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    {profile.is_online ? "Online" : "Offline"}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3">
             <Button
               onClick={handleSave}
-              disabled={isSaving || name === profile.name}
-              className="w-full"
+              disabled={isSaving || isLoggingOut}
+              className="flex-1"
             >
               {isSaving ? (
                 <>
-                  <Spinner className="mr-2" />
+                  <Spinner className="mr-2 h-4 w-4" />
                   Salvando...
                 </>
               ) : (
                 "Salvar Alterações"
               )}
             </Button>
-          </CardContent>
-        </Card>
 
-        {/* Logout Card */}
-        <Card className="border-destructive">
-          <CardHeader>
-            <CardTitle className="text-destructive">Sair</CardTitle>
-            <CardDescription>Encerre sua sessão na aplicação</CardDescription>
-          </CardHeader>
-          <CardContent>
             <Button
-              onClick={handleLogout}
-              disabled={isLoggingOut}
+              variant="outline"
+              onClick={handleCancel}
+              disabled={isSaving || isLoggingOut}
+              className="flex-1"
+            >
+              Cancelar
+            </Button>
+
+            <Button
               variant="destructive"
-              className="w-full"
+              onClick={handleLogout}
+              disabled={isSaving || isLoggingOut}
+              size="icon"
+              title="Desconectar"
             >
               {isLoggingOut ? (
-                <>
-                  <Spinner className="mr-2" />
-                  Saindo...
-                </>
+                <Spinner className="h-4 w-4" />
               ) : (
-                <>
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Sair da Conta
-                </>
+                <LogOut className="h-4 w-4" />
               )}
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
