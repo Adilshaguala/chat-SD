@@ -1,14 +1,18 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { ConversationWithDetails, Profile } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Plus, Search, Check, CheckCheck } from "lucide-react";
+import { Plus, Search, Check, CheckCheck, LogOut } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { toast } from "sonner";
 
 interface ChatSidebarProps {
   conversations: ConversationWithDetails[];
@@ -31,6 +35,22 @@ export function ChatSidebar({
   currentUser,
   className,
 }: ChatSidebarProps) {
+  const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      router.push("/auth/login");
+    } catch (error) {
+      toast.error("Erro ao fazer logout");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   const getConversationDisplay = (conversation: ConversationWithDetails) => {
     if (conversation.type === "group") {
       return {
@@ -220,6 +240,37 @@ export function ChatSidebar({
           )}
         </div>
       </ScrollArea>
+
+      {/* User Profile and Logout */}
+      <div className="p-3 border-t border-sidebar-border">
+        <div className="flex items-center gap-3">
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={currentUser.avatar_url || undefined} />
+            <AvatarFallback className="bg-primary/20 text-primary">
+              {currentUser.name.slice(0, 2).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-sidebar-foreground truncate text-sm">
+              {currentUser.name}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {currentUser.email}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="text-sidebar-foreground hover:bg-sidebar-accent"
+            title="Sair"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="sr-only">Sair</span>
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
