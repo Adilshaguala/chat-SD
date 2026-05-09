@@ -9,11 +9,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { AudioRecorder } from "./audio-recorder";
 import { cn } from "@/lib/utils";
 import {
   Smile,
   Paperclip,
-  Mic,
   Send,
   X,
   Image as ImageIcon,
@@ -50,16 +50,28 @@ export function MessageInput({
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = async () => {
-    if ((!message.trim() && selectedFiles.length === 0) || isLoading) return;
+    if (
+      (!message.trim() && selectedFiles.length === 0 && !audioBlob) ||
+      isLoading
+    )
+      return;
 
     setIsLoading(true);
 
     try {
-      if (selectedFiles.length > 0) {
+      if (audioBlob) {
+        // Convert blob to File
+        const audioFile = new File([audioBlob], "audio.webm", {
+          type: audioBlob.type,
+        });
+        await onSendMessage(message, "audio", [audioFile]);
+        setAudioBlob(null);
+      } else if (selectedFiles.length > 0) {
         // Determine type based on first file
         const firstFile = selectedFiles[0];
         let type: "image" | "video" | "audio" | "file" = "file";
@@ -79,6 +91,10 @@ export function MessageInput({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAudioRecorded = (blob: Blob) => {
+    setAudioBlob(blob);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -126,6 +142,26 @@ export function MessageInput({
           >
             <X className="h-4 w-4" />
           </Button>
+        </div>
+      )}
+
+      {/* Audio preview */}
+      {audioBlob && (
+        <div className="flex gap-2 mb-2">
+          <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
+            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-xs text-primary">🎙️</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">Áudio gravado</p>
+            </div>
+            <button
+              onClick={() => setAudioBlob(null)}
+              className="h-5 w-5 rounded-full bg-black/50 flex items-center justify-center flex-shrink-0"
+            >
+              <X className="h-3 w-3 text-white" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -250,14 +286,8 @@ export function MessageInput({
             </PopoverContent>
           </Popover>
 
-          {/* Mic button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 flex-shrink-0 text-muted-foreground"
-          >
-            <Mic className="h-5 w-5" />
-          </Button>
+          {/* Mic button / Audio Recorder */}
+          <AudioRecorder onAudioRecorded={handleAudioRecorded} />
         </div>
 
         {/* Send button */}
