@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { updateProfile, uploadAvatar } from "@/app/actions/profile";
 import { Profile } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,45 +93,20 @@ export default function ProfilePage() {
     if (!validate() || !profile) return;
 
     setIsSaving(true);
-    const supabase = createClient();
 
     try {
       let avatarUrl = profile.avatar_url;
 
       // Upload avatar if changed
       if (avatarFile) {
-        const fileExt = avatarFile.name.split(".").pop();
-        const filePath = `avatars/${profile.id}.${fileExt}`;
-
-        // Delete old avatar if exists
-        if (profile.avatar_url) {
-          const oldPath = profile.avatar_url.split("/").pop();
-          if (oldPath) {
-            await supabase.storage.from("avatars").remove([`avatars/${oldPath}`]);
-          }
-        }
-
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(filePath, avatarFile, { upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
-        avatarUrl = data.publicUrl;
+        const formData = new FormData();
+        formData.append("file", avatarFile);
+        const { url } = await uploadAvatar(formData);
+        avatarUrl = url;
       }
 
       // Update profile
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          name: name.trim(),
-          avatar_url: avatarUrl,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", profile.id);
-
-      if (error) throw error;
+      await updateProfile(name.trim(), avatarUrl);
 
       setProfile({
         ...profile,
@@ -140,8 +116,12 @@ export default function ProfilePage() {
       setAvatarFile(null);
       toast.success("Perfil atualizado com sucesso!");
     } catch (error) {
-      console.error("Error updating profile:", error);
-      toast.error("Erro ao atualizar perfil. Tente novamente.");
+      console.error("[v0] Error updating profile:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Erro ao atualizar perfil. Tente novamente."
+      );
     } finally {
       setIsSaving(false);
     }

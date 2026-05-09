@@ -170,6 +170,22 @@ export function ChatArea({
         return;
       }
 
+      // Create message status for all conversation participants
+      const { data: participants } = await supabase
+        .from("conversation_participants")
+        .select("user_id")
+        .eq("conversation_id", conversation.id);
+
+      if (participants && participants.length > 0) {
+        const statusRecords = participants.map((p) => ({
+          message_id: message.id,
+          user_id: p.user_id,
+          status: p.user_id === currentUser.id ? "read" : "delivered",
+        }));
+
+        await supabase.from("message_status").insert(statusRecords);
+      }
+
       // Upload attachments if any
       if (attachments && attachments.length > 0) {
         for (const file of attachments) {

@@ -2,6 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  createPrivateConversation,
+  createGroupConversation,
+} from "@/app/actions/chat";
+import { searchUsers } from "@/app/actions/user";
 import { Profile } from "@/lib/types";
 import {
   Dialog,
@@ -41,34 +46,32 @@ export function NewChatDialog({
 
   // Search users by name or email
   useEffect(() => {
-    const searchUsers = async () => {
+    const handleSearch = async () => {
       if (!searchQuery.trim()) {
         setUsers([]);
         return;
       }
 
       setIsLoading(true);
-      const supabase = createClient();
-
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .neq("id", currentUser.id)
-        .or(`name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
-        .limit(20);
-
-      setUsers(data || []);
-      setIsLoading(false);
+      try {
+        const results = await searchUsers(searchQuery);
+        setUsers(results);
+      } catch (error) {
+        console.error("[v0] Error searching users:", error);
+        setUsers([]);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    const debounce = setTimeout(searchUsers, 300);
+    const debounce = setTimeout(handleSearch, 300);
     return () => clearTimeout(debounce);
-  }, [searchQuery, currentUser.id]);
+  }, [searchQuery]);
 
   const handleUserSelect = (user: Profile) => {
     if (activeTab === "private") {
       // For private chat, create immediately
-      createPrivateChat(user.id);
+      handleCreatePrivateChat(user.id);
     } else {
       // For group, toggle selection
       setSelectedUsers((prev) =>
@@ -79,91 +82,24 @@ export function NewChatDialog({
     }
   };
 
-  const createPrivateChat = async (otherUserId: string) => {
+  const handleCreatePrivateChat = async (otherUserId: string) => {
     setIsCreating(true);
-    const supabase = createClient();
-
     try {
-      // Check if conversation already exists
-      const { data: existingParticipations } = await supabase
-        .from("conversation_participants")
-        .select("conversation_id")
-        .eq("user_id", currentUser.id);
-
-      if (existingParticipations) {
-        for (const participation of existingParticipations) {
-          const { data: otherParticipation } = await supabase
-            .from("conversation_participants")
-            .select("conversation_id")
-            .eq("conversation_id", participation.conversation_id)
-            .eq("user_id", otherUserId)
-            .single();
-
-          if (otherParticipation) {
-            // Check if it's a private conversation
-            const { data: conv } = await supabase
-              .from("conversations")
-              .select("type")
-              .eq("id", participation.conversation_id)
-              .single();
-
-            if (conv?.type === "private") {
-              onConversationCreated(participation.conversation_id);
-              resetDialog();
-              return;
-            }
-          }
-        }
-      }
-
-      // Create new private conversation
-      const { data: conversation, error: convError } = await supabase
-        .from("conversations")
-        .insert({
-          type: "private",
-          created_by: currentUser.id,
-        })
-        .select()
-        .single();
-
-      if (convError || !conversation) {
-        console.log("[v0] Error creating private conversation:", convError);
-        throw new Error("Erro ao criar conversa");
-      }
-
-      // Add participants
-      const { error: partError } = await supabase
-        .from("conversation_participants")
-        .insert([
-          {
-            conversation_id: conversation.id,
-            user_id: currentUser.id,
-            role: "admin",
-          },
-          {
-            conversation_id: conversation.id,
-            user_id: otherUserId,
-            role: "member",
-          },
-        ]);
-
-      if (partError) {
-        console.log("[v0] Error adding participants:", partError);
-        throw new Error("Erro ao adicionar participantes");
-      }
-
+      const { conversationId } = await createPrivateConversation(otherUserId);
       toast.success("Conversa criada com sucesso!");
-      onConversationCreated(conversation.id);
+      onConversationCreated(conversationId);
       resetDialog();
     } catch (error) {
-      console.log("[v0] Error in createPrivateChat:", error);
-      toast.error("Erro ao criar conversa");
+      console.error("[v0] Error creating private chat:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao criar conversa"
+      );
     } finally {
       setIsCreating(false);
     }
   };
 
-  const createGroupChat = async () => {
+  const handleCreateGroupChat = async () => {
     if (selectedUsers.length < 2) {
       toast.error("Selecione pelo menos 2 participantes");
       return;
@@ -175,54 +111,20 @@ export function NewChatDialog({
     }
 
     setIsCreating(true);
-    const supabase = createClient();
-
     try {
-      // Create group conversation
-      const { data: conversation, error: convError } = await supabase
-        .from("conversations")
-        .insert({
-          type: "group",
-          name: groupName,
-          created_by: currentUser.id,
-        })
-        .select()
-        .single();
-
-      if (convError || !conversation) {
-        console.log("[v0] Error creating group conversation:", convError);
-        throw new Error("Erro ao criar grupo");
-      }
-
-      // Add all participants including current user
-      const participants = [
-        {
-          conversation_id: conversation.id,
-          user_id: currentUser.id,
-          role: "admin" as const,
-        },
-        ...selectedUsers.map((user) => ({
-          conversation_id: conversation.id,
-          user_id: user.id,
-          role: "member" as const,
-        })),
-      ];
-
-      const { error: partError } = await supabase
-        .from("conversation_participants")
-        .insert(participants);
-
-      if (partError) {
-        console.log("[v0] Error adding participants:", partError);
-        throw new Error("Erro ao adicionar participantes");
-      }
-
+      const memberIds = selectedUsers.map((u) => u.id);
+      const { conversationId } = await createGroupConversation(
+        groupName,
+        memberIds
+      );
       toast.success("Grupo criado com sucesso!");
-      onConversationCreated(conversation.id);
+      onConversationCreated(conversationId);
       resetDialog();
     } catch (error) {
-      console.log("[v0] Error in createGroupChat:", error);
-      toast.error("Erro ao criar grupo");
+      console.error("[v0] Error creating group:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao criar grupo"
+      );
     } finally {
       setIsCreating(false);
     }
@@ -356,7 +258,7 @@ export function NewChatDialog({
             {/* Create group button */}
             {activeTab === "group" && (
               <Button
-                onClick={createGroupChat}
+                onClick={handleCreateGroupChat}
                 disabled={
                   selectedUsers.length < 2 || !groupName.trim() || isCreating
                 }

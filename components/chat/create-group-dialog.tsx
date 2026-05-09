@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createGroupConversation } from "@/app/actions/chat";
+import { searchUsers } from "@/app/actions/user";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,14 +20,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { Search, Users } from "lucide-react";
-import type { Profile, Conversation } from "@/lib/types";
+import type { Profile } from "@/lib/types";
 import { toast } from "sonner";
 
 interface CreateGroupDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currentUserId: string;
-  onGroupCreated: (conversation: Conversation) => void;
+  onGroupCreated: (conversationId: string) => void;
 }
 
 export function CreateGroupDialog({
@@ -41,9 +43,7 @@ export function CreateGroupDialog({
   const [isSearching, setIsSearching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
-  const supabase = createClient();
-
-  const searchUsers = async (query: string) => {
+  const handleSearchUsers = async (query: string) => {
     setSearchQuery(query);
     if (query.length < 2) {
       setSearchResults([]);
@@ -52,17 +52,11 @@ export function CreateGroupDialog({
 
     setIsSearching(true);
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .neq("id", currentUserId)
-        .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
-        .limit(10);
-
-      if (error) throw error;
-      setSearchResults(data || []);
+      const results = await searchUsers(query);
+      setSearchResults(results);
     } catch (error) {
-      console.error("Error searching users:", error);
+      console.error("[v0] Error searching users:", error);
+      setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
@@ -84,74 +78,27 @@ export function CreateGroupDialog({
       return;
     }
 
-    if (selectedUsers.length < 1) {
-      toast.error("Selecione pelo menos 1 membro para o grupo");
+    if (selectedUsers.length < 2) {
+      toast.error("Selecione pelo menos 2 membros para o grupo");
       return;
     }
 
     setIsCreating(true);
     try {
-      // Create the group conversation
-      const { data: conversation, error: convError } = await supabase
-        .from("conversations")
-        .insert({
-          type: "group",
-          name: groupName.trim(),
-          created_by: currentUserId,
-        })
-        .select()
-        .single();
-
-      if (convError) throw convError;
-
-      // Add current user as admin
-      const { error: adminError } = await supabase
-        .from("conversation_participants")
-        .insert({
-          conversation_id: conversation.id,
-          user_id: currentUserId,
-          role: "admin",
-        });
-
-      if (adminError) throw adminError;
-
-      // Add selected users as members
-      const participantInserts = selectedUsers.map((user) => ({
-        conversation_id: conversation.id,
-        user_id: user.id,
-        role: "member",
-      }));
-
-      const { error: participantsError } = await supabase
-        .from("conversation_participants")
-        .insert(participantInserts);
-
-      if (participantsError) throw participantsError;
-
-      // Fetch the complete conversation with participants
-      const { data: fullConversation, error: fetchError } = await supabase
-        .from("conversations")
-        .select(
-          `
-          *,
-          participants:conversation_participants(
-            user_id,
-            role,
-            profile:profiles(*)
-          )
-        `
-        )
-        .eq("id", conversation.id)
-        .single();
-
-      if (fetchError) throw fetchError;
+      const memberIds = selectedUsers.map((u) => u.id);
+      const { conversationId } = await createGroupConversation(
+        groupName,
+        memberIds
+      );
 
       toast.success("Grupo criado com sucesso!");
-      onGroupCreated(fullConversation as Conversation);
+      onGroupCreated(conversationId);
       handleClose();
     } catch (error) {
-      console.error("Error creating group:", error);
-      toast.error("Erro ao criar grupo. Tente novamente.");
+      console.error("[v0] Error creating group:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao criar grupo"
+      );
     } finally {
       setIsCreating(false);
     }
@@ -196,7 +143,7 @@ export function CreateGroupDialog({
               <Input
                 placeholder="Buscar por nome ou email..."
                 value={searchQuery}
-                onChange={(e) => searchUsers(e.target.value)}
+                onChange={(e) => handleSearchUsers(e.target.value)}
                 className="pl-9"
               />
             </div>
