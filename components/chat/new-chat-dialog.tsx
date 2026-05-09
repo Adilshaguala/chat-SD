@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Users, User, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,7 +33,7 @@ export function NewChatDialog({
 }: NewChatDialogProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [users, setUsers] = useState<Profile[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<Profile[]>([]);
   const [groupName, setGroupName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -65,16 +65,16 @@ export function NewChatDialog({
     return () => clearTimeout(debounce);
   }, [searchQuery, currentUser.id]);
 
-  const handleUserSelect = (userId: string) => {
+  const handleUserSelect = (user: Profile) => {
     if (activeTab === "private") {
       // For private chat, create immediately
-      createPrivateChat(userId);
+      createPrivateChat(user.id);
     } else {
       // For group, toggle selection
       setSelectedUsers((prev) =>
-        prev.includes(userId)
-          ? prev.filter((id) => id !== userId)
-          : [...prev, userId]
+        prev.some((u) => u.id === user.id)
+          ? prev.filter((u) => u.id !== user.id)
+          : [...prev, user]
       );
     }
   };
@@ -127,6 +127,7 @@ export function NewChatDialog({
         .single();
 
       if (convError || !conversation) {
+        console.log("[v0] Error creating private conversation:", convError);
         throw new Error("Erro ao criar conversa");
       }
 
@@ -147,12 +148,15 @@ export function NewChatDialog({
         ]);
 
       if (partError) {
+        console.log("[v0] Error adding participants:", partError);
         throw new Error("Erro ao adicionar participantes");
       }
 
+      toast.success("Conversa criada com sucesso!");
       onConversationCreated(conversation.id);
       resetDialog();
     } catch (error) {
+      console.log("[v0] Error in createPrivateChat:", error);
       toast.error("Erro ao criar conversa");
     } finally {
       setIsCreating(false);
@@ -186,6 +190,7 @@ export function NewChatDialog({
         .single();
 
       if (convError || !conversation) {
+        console.log("[v0] Error creating group conversation:", convError);
         throw new Error("Erro ao criar grupo");
       }
 
@@ -196,9 +201,9 @@ export function NewChatDialog({
           user_id: currentUser.id,
           role: "admin" as const,
         },
-        ...selectedUsers.map((userId) => ({
+        ...selectedUsers.map((user) => ({
           conversation_id: conversation.id,
-          user_id: userId,
+          user_id: user.id,
           role: "member" as const,
         })),
       ];
@@ -208,12 +213,15 @@ export function NewChatDialog({
         .insert(participants);
 
       if (partError) {
+        console.log("[v0] Error adding participants:", partError);
         throw new Error("Erro ao adicionar participantes");
       }
 
+      toast.success("Grupo criado com sucesso!");
       onConversationCreated(conversation.id);
       resetDialog();
     } catch (error) {
+      console.log("[v0] Error in createGroupChat:", error);
       toast.error("Erro ao criar grupo");
     } finally {
       setIsCreating(false);
@@ -227,6 +235,14 @@ export function NewChatDialog({
     setGroupName("");
     setActiveTab("private");
     onOpenChange(false);
+  };
+
+  const removeSelectedUser = (userId: string) => {
+    setSelectedUsers((prev) => prev.filter((u) => u.id !== userId));
+  };
+
+  const isUserSelected = (userId: string) => {
+    return selectedUsers.some((u) => u.id === userId);
   };
 
   return (
@@ -269,31 +285,23 @@ export function NewChatDialog({
               />
             </div>
 
-            {/* Selected users (for group) */}
+            {/* Selected users (for group) - now shows from selectedUsers array */}
             {activeTab === "group" && selectedUsers.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {selectedUsers.map((userId) => {
-                  const user = users.find((u) => u.id === userId);
-                  if (!user) return null;
-                  return (
-                    <div
-                      key={userId}
-                      className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-full text-sm"
+                {selectedUsers.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-full text-sm"
+                  >
+                    <span>{user.name}</span>
+                    <button
+                      onClick={() => removeSelectedUser(user.id)}
+                      className="text-muted-foreground hover:text-foreground"
                     >
-                      <span>{user.name}</span>
-                      <button
-                        onClick={() =>
-                          setSelectedUsers((prev) =>
-                            prev.filter((id) => id !== userId)
-                          )
-                        }
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
+                      ×
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -314,14 +322,14 @@ export function NewChatDialog({
                   {users.map((user) => (
                     <button
                       key={user.id}
-                      onClick={() => handleUserSelect(user.id)}
+                      onClick={() => handleUserSelect(user)}
                       disabled={isCreating}
                       className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
                     >
                       {activeTab === "group" && (
                         <Checkbox
-                          checked={selectedUsers.includes(user.id)}
-                          onCheckedChange={() => handleUserSelect(user.id)}
+                          checked={isUserSelected(user.id)}
+                          onCheckedChange={() => handleUserSelect(user)}
                         />
                       )}
                       <Avatar className="h-10 w-10">
