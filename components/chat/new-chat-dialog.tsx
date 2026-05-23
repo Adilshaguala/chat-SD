@@ -58,6 +58,9 @@ export function NewChatDialog({
         setUsers(results);
       } catch (error) {
         console.error("[v0] Error searching users:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.log("[v0] Search error details:", errorMessage);
+        toast.error("Erro ao buscar usuários");
         setUsers([]);
       } finally {
         setIsLoading(false);
@@ -91,6 +94,8 @@ export function NewChatDialog({
       resetDialog();
     } catch (error) {
       console.error("[v0] Error creating private chat:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.log("[v0] Chat creation error details:", errorMessage);
       toast.error(
         error instanceof Error ? error.message : "Erro ao criar conversa"
       );

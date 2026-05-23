@@ -4,14 +4,16 @@ import { createClient } from "@/lib/supabase/server";
 import { headers, cookies } from "next/headers";
 
 export async function createPrivateConversation(otherUserId: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Não autenticado");
-
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error("Não autenticado - faça login primeiro");
+    }
+
     // Create new private conversation
     const { data: conversation, error: convError } = await supabase
       .from("conversations")
@@ -23,6 +25,7 @@ export async function createPrivateConversation(otherUserId: string) {
       .single();
 
     if (convError || !conversation) {
+      console.error("[v0] Conversation creation error:", convError);
       throw new Error(convError?.message || "Erro ao criar conversa");
     }
 
@@ -43,13 +46,15 @@ export async function createPrivateConversation(otherUserId: string) {
       ]);
 
     if (partError) {
+      console.error("[v0] Participant creation error:", partError);
       throw new Error(partError.message || "Erro ao adicionar participantes");
     }
 
     return { conversationId: conversation.id };
   } catch (error) {
-    console.error("[v0] Error creating private conversation:", error);
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[v0] Error creating private conversation:", message);
+    throw new Error(message);
   }
 }
 
@@ -57,18 +62,20 @@ export async function createGroupConversation(
   groupName: string,
   memberIds: string[]
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Não autenticado");
-
-  if (memberIds.length < 2) {
-    throw new Error("Selecione pelo menos 2 membros");
-  }
-
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error("Não autenticado - faça login primeiro");
+    }
+
+    if (memberIds.length < 2) {
+      throw new Error("Selecione pelo menos 2 membros");
+    }
+
     // Create group conversation
     const { data: conversation, error: convError } = await supabase
       .from("conversations")
@@ -81,6 +88,7 @@ export async function createGroupConversation(
       .single();
 
     if (convError || !conversation) {
+      console.error("[v0] Group creation error:", convError);
       throw new Error(convError?.message || "Erro ao criar grupo");
     }
 
@@ -103,13 +111,15 @@ export async function createGroupConversation(
       .insert(participants);
 
     if (partError) {
+      console.error("[v0] Group participants error:", partError);
       throw new Error(partError.message || "Erro ao adicionar participantes");
     }
 
     return { conversationId: conversation.id };
   } catch (error) {
-    console.error("[v0] Error creating group conversation:", error);
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[v0] Error creating group conversation:", message);
+    throw new Error(message);
   }
 }
 

@@ -52,26 +52,37 @@ export async function updateUserPresence(isOnline: boolean) {
 }
 
 export async function searchUsers(query: string): Promise<Profile[]> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return [];
-
-  if (!query.trim() || query.length < 2) return [];
-
   try {
-    const { data: profiles } = await supabase
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      console.log("[v0] User not authenticated for search");
+      return [];
+    }
+
+    if (!query.trim() || query.length < 2) {
+      return [];
+    }
+
+    const { data: profiles, error } = await supabase
       .from("profiles")
       .select("*")
       .neq("id", user.id)
       .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
       .limit(20);
 
+    if (error) {
+      console.error("[v0] Search query error:", error);
+      return [];
+    }
+
     return profiles || [];
   } catch (error) {
-    console.error("[v0] Error searching users:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[v0] Error searching users:", message);
     return [];
   }
 }
