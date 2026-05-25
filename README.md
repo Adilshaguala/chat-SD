@@ -10,6 +10,23 @@ This repository is linked to a [v0](https://v0.app) project. You can continue de
 
 ## Getting Started
 
+### Connect Supabase
+
+Create `.env.local` from `.env.example` and fill it with your project values:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL=http://localhost:3000/auth/callback
+```
+
+In Supabase:
+
+1. Open **Project Settings > API** and copy the **Project URL** and **anon public** key into `.env.local`.
+2. Open **SQL Editor** and run `scripts/001_create_schema.sql`.
+3. Run `scripts/002_create_storage.sql` to create the `chat-attachments` bucket used by uploads.
+4. In **Authentication > URL Configuration**, set the site URL to `http://localhost:3000` for local development and add `http://localhost:3000/auth/callback` to redirect URLs.
+
 First, run the development server:
 
 ```bash
