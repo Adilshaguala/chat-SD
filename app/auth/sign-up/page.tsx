@@ -68,9 +68,6 @@ export default function SignUpPage() {
         email,
         password,
         options: {
-          emailRedirectTo:
-            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
-            `${window.location.origin}/auth/callback`,
           data: {
             name: name.trim(),
           },
@@ -86,8 +83,8 @@ export default function SignUpPage() {
         return;
       }
 
-      toast.success("Cadastro realizado! Verifique seu email para confirmar.");
-      router.push("/auth/sign-up-success");
+      toast.success("Conta criada com sucesso!");
+      router.push("/");
     } catch (error) {
       toast.error("Erro ao criar conta. Tente novamente.");
     } finally {

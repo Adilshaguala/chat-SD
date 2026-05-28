@@ -1,7 +1,6 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { headers, cookies } from "next/headers";
 
 export async function createPrivateConversation(otherUserId: string) {
   const supabase = await createClient();
@@ -12,7 +11,6 @@ export async function createPrivateConversation(otherUserId: string) {
   if (!user) throw new Error("Não autenticado");
 
   try {
-    // Create new private conversation
     const { data: conversation, error: convError } = await supabase
       .from("conversations")
       .insert({
@@ -26,7 +24,6 @@ export async function createPrivateConversation(otherUserId: string) {
       throw new Error(convError?.message || "Erro ao criar conversa");
     }
 
-    // Add participants
     const { error: partError } = await supabase
       .from("conversation_participants")
       .insert([
@@ -69,7 +66,6 @@ export async function createGroupConversation(
   }
 
   try {
-    // Create group conversation
     const { data: conversation, error: convError } = await supabase
       .from("conversations")
       .insert({
@@ -84,7 +80,6 @@ export async function createGroupConversation(
       throw new Error(convError?.message || "Erro ao criar grupo");
     }
 
-    // Add all participants including current user
     const participants = [
       {
         conversation_id: conversation.id,
