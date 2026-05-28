@@ -99,10 +99,10 @@ export function MessageBubble({
               <img
                 src={message.attachments[0].file_url}
                 alt={message.attachments[0].file_name}
-                className="max-w-xs rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                className="w-full max-w-[min(18rem,70vw)] rounded-lg cursor-pointer transition-opacity hover:opacity-90"
               />
             ) : message.attachments && message.attachments.length > 1 ? (
-              <div className="grid grid-cols-2 gap-1 max-w-xs">
+              <div className="grid w-full max-w-[min(18rem,70vw)] grid-cols-2 gap-1">
                 {message.attachments.slice(0, 4).map((attachment, index) => (
                   <div key={attachment.id} className="relative aspect-square">
                     <img
@@ -132,7 +132,7 @@ export function MessageBubble({
       case "video":
         const videoAttachment = message.attachments?.[0];
         return videoAttachment ? (
-          <div className="relative max-w-xs">
+          <div className="relative w-full max-w-[min(18rem,70vw)]">
             <video
               src={videoAttachment.file_url}
               className="rounded-lg w-full"
@@ -151,7 +151,7 @@ export function MessageBubble({
       case "audio":
         const audioAttachment = message.attachments?.[0];
         return audioAttachment ? (
-          <div className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg min-w-[200px]">
+          <div className="flex min-w-[12rem] max-w-full items-center gap-3 rounded-lg bg-muted/50 p-2">
             <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full">
               <Play className="h-5 w-5" />
             </Button>
@@ -178,7 +178,7 @@ export function MessageBubble({
       case "file":
         const fileAttachment = message.attachments?.[0];
         return fileAttachment ? (
-          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+          <div className="flex max-w-full flex-col gap-2 rounded-lg bg-muted/50 p-3 sm:flex-row sm:items-center">
             <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
               <FileText className="h-5 w-5 text-primary" />
             </div>
@@ -190,7 +190,7 @@ export function MessageBubble({
                 {(fileAttachment.file_size / 1024).toFixed(0)}KB
               </p>
             </div>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               <Button variant="outline" size="sm" asChild>
                 <a href={fileAttachment.file_url} download>
                   Download
@@ -213,7 +213,7 @@ export function MessageBubble({
   return (
     <div
       className={cn(
-        "flex gap-2 mb-3 group",
+        "group mb-3 flex w-full gap-2 overflow-hidden",
         isOwn ? "flex-row-reverse" : "flex-row"
       )}
       onMouseEnter={() => setShowActions(true)}
@@ -234,20 +234,23 @@ export function MessageBubble({
       )}
 
       <div
-        className={cn("flex flex-col max-w-[70%]", isOwn ? "items-end" : "items-start")}
+        className={cn(
+          "flex min-w-0 flex-col max-w-[85%] sm:max-w-[75%]",
+          isOwn ? "items-end" : "items-start"
+        )}
       >
         {/* Reply preview */}
         {message.reply_to && (
           <div
             className={cn(
-              "text-xs px-3 py-1.5 mb-1 rounded-lg border-l-2 border-primary/50 bg-muted/50",
+              "mb-1 rounded-lg border-l-2 border-primary/50 bg-muted/50 px-3 py-1.5 text-xs",
               isOwn ? "mr-2" : "ml-2"
             )}
           >
             <span className="font-medium text-primary">
               {message.reply_to.sender?.name}
             </span>
-            <p className="text-muted-foreground truncate max-w-[200px]">
+            <p className="max-w-[200px] truncate text-muted-foreground">
               {message.reply_to.content}
             </p>
           </div>
@@ -256,7 +259,7 @@ export function MessageBubble({
         {/* Message bubble */}
         <div
           className={cn(
-            "relative px-3 py-2 rounded-2xl",
+            "relative min-w-0 max-w-full rounded-2xl px-3 py-2",
             isOwn
               ? "bg-primary text-primary-foreground rounded-tr-sm"
               : "bg-card border border-border rounded-tl-sm"

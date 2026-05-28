@@ -28,6 +28,7 @@ interface ChatHeaderProps {
   otherParticipant?: Profile;
   onBack?: () => void;
   isMobile?: boolean;
+  onOpenGroupSettings?: () => void;
 }
 
 export function ChatHeader({
@@ -36,6 +37,7 @@ export function ChatHeader({
   otherParticipant,
   onBack,
   isMobile,
+  onOpenGroupSettings,
 }: ChatHeaderProps) {
   const displayName =
     conversation.type === "group"
@@ -53,8 +55,8 @@ export function ChatHeader({
   const participantCount = conversation.participants.length;
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
-      <div className="flex items-center gap-3">
+    <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
+      <div className="flex min-w-0 items-center gap-3">
         {isMobile && onBack && (
           <Button
             variant="ghost"
@@ -79,8 +81,8 @@ export function ChatHeader({
           )}
         </div>
 
-        <div>
-          <h2 className="font-semibold text-foreground">{displayName}</h2>
+        <div className="min-w-0">
+          <h2 className="truncate font-semibold text-foreground">{displayName}</h2>
           <p className="text-xs text-muted-foreground">
             {conversation.type === "group"
               ? `${participantCount} participantes`
@@ -91,13 +93,21 @@ export function ChatHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="text-muted-foreground">
+      <div className="flex flex-shrink-0 items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="hidden text-muted-foreground sm:inline-flex"
+        >
           <Video className="h-5 w-5" />
           <span className="sr-only">Chamada de vídeo</span>
         </Button>
 
-        <Button variant="ghost" size="icon" className="text-muted-foreground">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="hidden text-muted-foreground sm:inline-flex"
+        >
           <Phone className="h-5 w-5" />
           <span className="sr-only">Chamada de áudio</span>
         </Button>
@@ -115,9 +125,9 @@ export function ChatHeader({
               Pesquisar mensagens
             </DropdownMenuItem>
             {conversation.type === "group" && (
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenGroupSettings}>
                 <UserPlus className="h-4 w-4 mr-2" />
-                Adicionar participante
+                Gerir participantes
               </DropdownMenuItem>
             )}
             <DropdownMenuItem>

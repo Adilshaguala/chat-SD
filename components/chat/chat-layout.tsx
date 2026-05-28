@@ -211,6 +211,12 @@ export function ChatLayout({ currentUser }: ChatLayoutProps) {
     (c) => c.id === selectedConversationId
   );
 
+  useEffect(() => {
+    if (selectedConversationId && !selectedConversation) {
+      setSelectedConversationId(null);
+    }
+  }, [selectedConversation, selectedConversationId]);
+
   const handleConversationSelect = useCallback((conversationId: string) => {
     setSelectedConversationId(conversationId);
   }, []);
@@ -231,7 +237,7 @@ export function ChatLayout({ currentUser }: ChatLayoutProps) {
   // Mobile: show either sidebar or chat area
   if (isMobileView) {
     return (
-      <div className="flex h-screen w-full bg-background">
+      <div className="flex h-[100dvh] w-full overflow-hidden bg-background">
         {!selectedConversationId ? (
           <ChatSidebar
             conversations={filteredConversations}
@@ -249,6 +255,9 @@ export function ChatLayout({ currentUser }: ChatLayoutProps) {
             currentUser={currentUser}
             onBack={handleBackToList}
             isMobile
+            onConversationUpdated={() => {
+              refreshConversations();
+            }}
           />
         ) : null}
 
@@ -264,7 +273,7 @@ export function ChatLayout({ currentUser }: ChatLayoutProps) {
 
   // Desktop: show both sidebar and chat area
   return (
-    <div className="flex h-screen w-full bg-background">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-background">
       <ChatSidebar
         conversations={filteredConversations}
         selectedConversationId={selectedConversationId}
@@ -276,11 +285,14 @@ export function ChatLayout({ currentUser }: ChatLayoutProps) {
         className="w-80 flex-shrink-0 border-r border-border"
       />
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         {selectedConversation ? (
           <ChatArea
             conversation={selectedConversation}
             currentUser={currentUser}
+            onConversationUpdated={() => {
+              refreshConversations();
+            }}
           />
         ) : (
           <EmptyChatState onNewChat={() => setIsNewChatOpen(true)} />

@@ -48,7 +48,7 @@ export function MessageList({
   });
 
   return (
-    <ScrollArea className="flex-1 px-4">
+    <ScrollArea className="h-full min-w-0 px-2 sm:px-4">
       <div className="py-4">
         {groupedMessages.map((group, groupIndex) => (
           <div key={groupIndex}>

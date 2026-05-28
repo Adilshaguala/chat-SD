@@ -123,7 +123,7 @@ export function ChatSidebar({
   };
 
   return (
-    <div className={cn("flex flex-col h-full bg-sidebar", className)}>
+    <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-sidebar", className)}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
         <h1 className="text-xl font-semibold text-sidebar-foreground">Chats</h1>
@@ -152,7 +152,8 @@ export function ChatSidebar({
       </div>
 
       {/* Conversation List */}
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1">
+      <ScrollArea className="h-full">
         <div className="px-2">
           {conversations.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -176,7 +177,7 @@ export function ChatSidebar({
                   key={conversation.id}
                   onClick={() => onSelectConversation(conversation.id)}
                   className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left",
+                    "flex w-full min-w-0 items-center gap-3 rounded-lg p-3 text-left transition-colors",
                     isSelected
                       ? "bg-sidebar-accent"
                       : "hover:bg-sidebar-accent/50"
@@ -240,6 +241,7 @@ export function ChatSidebar({
           )}
         </div>
       </ScrollArea>
+      </div>
 
       {/* User Profile and Logout */}
       <div className="p-3 border-t border-sidebar-border">

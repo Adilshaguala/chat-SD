@@ -10,6 +10,8 @@ import {
 import { ChatHeader } from "./chat-header";
 import { MessageList } from "./message-list";
 import { MessageInput } from "./message-input";
+import { deleteMessage } from "@/app/actions/messages";
+import { GroupSettings } from "./group-settings";
 import useSWR from "swr";
 
 interface ChatAreaProps {
@@ -17,6 +19,7 @@ interface ChatAreaProps {
   currentUser: Profile;
   onBack?: () => void;
   isMobile?: boolean;
+  onConversationUpdated?: () => void;
 }
 
 async function fetchMessages(
@@ -77,8 +80,10 @@ export function ChatArea({
   currentUser,
   onBack,
   isMobile,
+  onConversationUpdated,
 }: ChatAreaProps) {
   const [replyingTo, setReplyingTo] = useState<MessageWithDetails | null>(null);
+  const [isGroupSettingsOpen, setIsGroupSettingsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -190,7 +195,7 @@ export function ChatArea({
       if (attachments && attachments.length > 0) {
         for (const file of attachments) {
           const fileExt = file.name.split(".").pop();
-          const filePath = `${conversation.id}/${message.id}/${Date.now()}.${fileExt}`;
+          const filePath = `${currentUser.id}/${conversation.id}/${message.id}/${Date.now()}.${fileExt}`;
 
           const { error: uploadError } = await supabase.storage
             .from("chat-attachments")
@@ -260,17 +265,12 @@ export function ChatArea({
 
   const handleDeleteMessage = useCallback(
     async (messageId: string) => {
-      const supabase = createClient();
-
-      await supabase
-        .from("messages")
-        .update({ is_deleted: true, type: "deleted", content: null })
-        .eq("id", messageId)
-        .eq("sender_id", currentUser.id);
+      await deleteMessage(messageId);
 
       refreshMessages();
+      onConversationUpdated?.();
     },
-    [currentUser.id, refreshMessages]
+    [onConversationUpdated, refreshMessages]
   );
 
   const getOtherParticipant = () => {
@@ -280,29 +280,49 @@ export function ChatArea({
   };
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-background">
       <ChatHeader
         conversation={conversation}
         currentUser={currentUser}
         otherParticipant={getOtherParticipant() || undefined}
         onBack={onBack}
         isMobile={isMobile}
+        onOpenGroupSettings={
+          conversation.type === "group"
+            ? () => setIsGroupSettingsOpen(true)
+            : undefined
+        }
       />
 
-      <MessageList
-        messages={messages}
-        currentUser={currentUser}
-        onReply={setReplyingTo}
-        onReaction={handleReaction}
-        onDelete={handleDeleteMessage}
-        messagesEndRef={messagesEndRef}
-      />
+      <div className="min-h-0 flex-1">
+        <MessageList
+          messages={messages}
+          currentUser={currentUser}
+          onReply={setReplyingTo}
+          onReaction={handleReaction}
+          onDelete={handleDeleteMessage}
+          messagesEndRef={messagesEndRef}
+        />
+      </div>
 
       <MessageInput
         onSendMessage={handleSendMessage}
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
       />
+
+      {conversation.type === "group" && (
+        <GroupSettings
+          open={isGroupSettingsOpen}
+          onOpenChange={setIsGroupSettingsOpen}
+          conversation={conversation}
+          currentUserId={currentUser.id}
+          onGroupUpdated={() => {
+            refreshMessages();
+            onConversationUpdated?.();
+          }}
+        />
+      )}
     </div>
   );
 }

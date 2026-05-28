@@ -1,12 +1,17 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   ConversationWithDetails,
   Profile,
-  ConversationParticipant,
 } from "@/lib/types";
+import {
+  addGroupMember,
+  removeGroupMember,
+  renameGroup,
+  updateGroupMemberRole,
+} from "@/app/actions/group";
 import {
   Dialog,
   DialogContent,
@@ -46,12 +51,10 @@ export function GroupSettings({
   const [isSearching, setIsSearching] = useState(false);
   const supabase = createClient();
 
-  // Check if current user is admin
   const isAdmin = conversation.participants.some(
     (p) => p.user_id === currentUserId && p.role === "admin"
   );
 
-  // Search for users to add
   useEffect(() => {
     const searchUsers = async () => {
       if (!searchQuery.trim() || !isAdmin) {
@@ -61,14 +64,19 @@ export function GroupSettings({
 
       setIsSearching(true);
       try {
+        const safeQuery = searchQuery.trim().replace(/[,%()]/g, "");
+        if (safeQuery.length < 2) {
+          setSearchResults([]);
+          return;
+        }
+
         const { data } = await supabase
           .from("profiles")
           .select("*")
           .neq("id", currentUserId)
-          .or(`name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
+          .or(`name.ilike.%${safeQuery}%,email.ilike.%${safeQuery}%`)
           .limit(10);
 
-        // Filter out already added members
         const memberIds = new Set(conversation.participants.map((p) => p.user_id));
         setSearchResults((data || []).filter((p) => !memberIds.has(p.id)));
       } catch (error) {
@@ -83,25 +91,16 @@ export function GroupSettings({
   }, [searchQuery, isAdmin, conversation.participants, currentUserId, supabase]);
 
   const handleSaveGroupName = async () => {
-    if (!groupName.trim()) {
-      toast.error("Nome do grupo não pode ser vazio");
-      return;
-    }
-
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from("conversations")
-        .update({ name: groupName.trim() })
-        .eq("id", conversation.id);
-
-      if (error) throw error;
-
+      await renameGroup(conversation.id, groupName);
       toast.success("Nome do grupo atualizado!");
       onGroupUpdated?.();
     } catch (error) {
       console.error("Error updating group:", error);
-      toast.error("Erro ao atualizar nome do grupo");
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao atualizar nome do grupo"
+      );
     } finally {
       setIsSaving(false);
     }
@@ -109,65 +108,43 @@ export function GroupSettings({
 
   const handleAddMember = async (userId: string) => {
     try {
-      const { error } = await supabase
-        .from("conversation_participants")
-        .insert({
-          conversation_id: conversation.id,
-          user_id: userId,
-          role: "member",
-        });
-
-      if (error) throw error;
-
+      await addGroupMember(conversation.id, userId);
       toast.success("Membro adicionado ao grupo!");
       setSearchQuery("");
       setSearchResults([]);
       onGroupUpdated?.();
     } catch (error) {
       console.error("Error adding member:", error);
-      toast.error("Erro ao adicionar membro");
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao adicionar membro"
+      );
     }
   };
 
   const handleRemoveMember = async (userId: string) => {
-    if (userId === currentUserId) {
-      // Allow user to leave the group
-      try {
-        const { error } = await supabase
-          .from("conversation_participants")
-          .delete()
-          .eq("conversation_id", conversation.id)
-          .eq("user_id", currentUserId);
-
-        if (error) throw error;
-
-        toast.success("Você deixou o grupo");
-        onOpenChange(false);
-        onGroupUpdated?.();
-      } catch (error) {
-        toast.error("Erro ao sair do grupo");
-      }
-      return;
-    }
-
-    if (!isAdmin) {
+    if (userId !== currentUserId && !isAdmin) {
       toast.error("Você não tem permissão para remover membros");
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from("conversation_participants")
-        .delete()
-        .eq("conversation_id", conversation.id)
-        .eq("user_id", userId);
+      await removeGroupMember(conversation.id, userId);
 
-      if (error) throw error;
-
-      toast.success("Membro removido do grupo");
+      if (userId === currentUserId) {
+        toast.success("Você saiu do grupo");
+        onOpenChange(false);
+      } else {
+        toast.success("Membro removido do grupo");
+      }
       onGroupUpdated?.();
     } catch (error) {
-      toast.error("Erro ao remover membro");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : userId === currentUserId
+            ? "Erro ao sair do grupo"
+            : "Erro ao remover membro"
+      );
     }
   };
 
@@ -178,24 +155,19 @@ export function GroupSettings({
     }
 
     try {
-      const { error } = await supabase
-        .from("conversation_participants")
-        .update({ role: "admin" })
-        .eq("conversation_id", conversation.id)
-        .eq("user_id", userId);
-
-      if (error) throw error;
-
+      await updateGroupMemberRole(conversation.id, userId, "admin");
       toast.success("Membro promovido a admin!");
       onGroupUpdated?.();
     } catch (error) {
-      toast.error("Erro ao promover membro");
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao promover membro"
+      );
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-h-[80vh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Configurações do Grupo</DialogTitle>
           <DialogDescription>
@@ -204,7 +176,6 @@ export function GroupSettings({
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Group Name */}
           {isAdmin && (
             <div className="space-y-2">
               <Label htmlFor="groupName">Nome do Grupo</Label>
@@ -227,12 +198,11 @@ export function GroupSettings({
             </div>
           )}
 
-          {/* Add Members Section */}
           {isAdmin && (
             <div className="space-y-2">
               <Label>Adicionar Membros</Label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Pesquisar usuários..."
                   value={searchQuery}
@@ -246,25 +216,23 @@ export function GroupSettings({
                   <Spinner />
                 </div>
               ) : searchResults.length > 0 ? (
-                <ScrollArea className="h-[200px] border rounded-lg p-2">
+                <ScrollArea className="h-[200px] rounded-lg border p-2">
                   <div className="space-y-1">
                     {searchResults.map((user) => (
                       <div
                         key={user.id}
-                        className="flex items-center justify-between p-2 rounded-lg hover:bg-muted"
+                        className="flex items-center justify-between rounded-lg p-2 hover:bg-muted"
                       >
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
                           <Avatar className="h-8 w-8 flex-shrink-0">
                             <AvatarImage src={user.avatar_url || undefined} />
-                            <AvatarFallback className="bg-primary/20 text-primary text-xs">
+                            <AvatarFallback className="bg-primary/20 text-xs text-primary">
                               {user.name.slice(0, 2).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {user.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground truncate">
+                            <p className="truncate text-sm font-medium">{user.name}</p>
+                            <p className="truncate text-xs text-muted-foreground">
                               {user.email}
                             </p>
                           </div>
@@ -284,37 +252,34 @@ export function GroupSettings({
             </div>
           )}
 
-          {/* Members List */}
           <div className="space-y-2">
             <Label>Membros ({conversation.participants.length})</Label>
-            <ScrollArea className="h-[300px] border rounded-lg p-2">
+            <ScrollArea className="h-[300px] rounded-lg border p-2">
               <div className="space-y-1">
                 {conversation.participants.map((participant) => (
                   <div
                     key={participant.id}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-muted"
+                    className="flex items-center justify-between rounded-lg p-2 hover:bg-muted"
                   >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
                       <Avatar className="h-8 w-8 flex-shrink-0">
                         <AvatarImage
                           src={participant.profile?.avatar_url || undefined}
                         />
-                        <AvatarFallback className="bg-primary/20 text-primary text-xs">
-                          {participant.profile?.name
-                            .slice(0, 2)
-                            .toUpperCase()}
+                        <AvatarFallback className="bg-primary/20 text-xs text-primary">
+                          {participant.profile?.name.slice(0, 2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium truncate">
+                          <p className="truncate text-sm font-medium">
                             {participant.profile?.name}
                           </p>
                           {participant.role === "admin" && (
-                            <Shield className="h-3 w-3 text-primary flex-shrink-0" />
+                            <Shield className="h-3 w-3 flex-shrink-0 text-primary" />
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground truncate">
+                        <p className="truncate text-xs text-muted-foreground">
                           {participant.profile?.email}
                         </p>
                       </div>
@@ -326,9 +291,7 @@ export function GroupSettings({
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() =>
-                              handlePromoteToAdmin(participant.user_id)
-                            }
+                            onClick={() => handlePromoteToAdmin(participant.user_id)}
                             title="Promover a admin"
                           >
                             <Shield className="h-4 w-4" />
@@ -337,9 +300,7 @@ export function GroupSettings({
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() =>
-                            handleRemoveMember(participant.user_id)
-                          }
+                          onClick={() => handleRemoveMember(participant.user_id)}
                           className="text-destructive"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -372,3 +333,4 @@ export function GroupSettings({
     </Dialog>
   );
 }
+
